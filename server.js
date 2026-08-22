@@ -8,8 +8,8 @@ const PORT = 5000;
 
 const API_URL_HU = 'https://wtx.tele68.com/v1/tx/sessions';
 const API_URL_MD5 = 'https://wtxmd52.tele68.com/v1/txmd5/sessions';
-const LEARNING_FILE = 'Tskhang.json';
-const HISTORY_FILE = 'Tskhang1.json';
+const LEARNING_FILE = 'anhquan.json';
+const HISTORY_FILE = 'anhquan1.json';
 
 let predictionHistory = { hu: [], md5: [] };
 const MAX_HISTORY = 100;
@@ -134,9 +134,7 @@ async function fetchDataMd5() {
   }
 }
 
-// ==================== CÁC HÀM PHÂN TÍCH CẦU (COPY TỪ LC.JS GỐC) ====================
-// (Đây là các hàm từ file lc.js bạn đã cung cấp, tôi chỉ giữ lại chữ ký và phần thân cần thiết)
-
+// ==================== CÁC HÀM PHÂN TÍCH CẦU ====================
 function analyzeCauBet(results, type) {
   if (results.length < 3) return { detected: false };
   let streakType = results[0];
@@ -611,8 +609,15 @@ function calculateAdvancedPrediction(data, type) {
   baseConf += agreement * 12 + volatilityBoost;
   let finalConf = Math.min(94, Math.max(55, Math.round(baseConf)));
 
+  // LƯU DỰ ĐOÁN GỐC
+  const originalPrediction = finalPrediction;
+  
+  // ĐẢO NGƯỢC KẾT QUẢ
+  const reversedPrediction = originalPrediction === 'Tài' ? 'Xỉu' : 'Tài';
+
   return {
-    prediction: finalPrediction,
+    prediction: reversedPrediction,  // Trả về dự đoán đã đảo ngược
+    originalPrediction: originalPrediction,  // Dự đoán gốc (chỉ dùng để log)
     confidence: finalConf,
     factors: factors.slice(0, 8),
     allPatterns: predictions.map(p => p.name).slice(0, 5),
@@ -625,7 +630,9 @@ function calculateAdvancedPrediction(data, type) {
         accuracy: learningData[type].totalPredictions ? (learningData[type].correctPredictions / learningData[type].totalPredictions * 100).toFixed(1) + '%' : 'N/A',
         currentStreak: streak
       }
-    }
+    },
+    da_dao_nguoc: true,
+    ghi_chu: 'Đã đảo ngược kết quả dự đoán gốc'
   };
 }
 
@@ -677,8 +684,9 @@ function savePredictionToHistory(type, phien, prediction, confidence, latestData
     Phien_hien_tai: phien.toString(),
     Du_doan: prediction,
     ket_qua_du_doan: '',
-    id: '@Tskhang',
-    timestamp: new Date().toISOString()
+    id: '@anhquan',
+    timestamp: new Date().toISOString(),
+    da_dao_nguoc: true
   };
   predictionHistory[type].unshift(record);
   if (predictionHistory[type].length > MAX_HISTORY) predictionHistory[type].pop();
@@ -709,7 +717,7 @@ async function autoProcessPredictions() {
         savePredictionToHistory('hu', nextPhien, result.prediction, result.confidence, dataHu[0]);
         recordPrediction('hu', nextPhien, result.prediction, result.confidence, result.factors);
         lastProcessedPhien.hu = nextPhien;
-        console.log(`[Auto] Hu phiên ${nextPhien}: ${result.prediction} (${result.confidence}%)`);
+        console.log(`[Auto] Hu phiên ${nextPhien}: Gốc: ${result.originalPrediction} → Đảo ngược: ${result.prediction} (${result.confidence}%)`);
       }
     }
     const dataMd5 = await fetchDataMd5();
@@ -721,7 +729,7 @@ async function autoProcessPredictions() {
         savePredictionToHistory('md5', nextPhien, result.prediction, result.confidence, dataMd5[0]);
         recordPrediction('md5', nextPhien, result.prediction, result.confidence, result.factors);
         lastProcessedPhien.md5 = nextPhien;
-        console.log(`[Auto] MD5 phiên ${nextPhien}: ${result.prediction} (${result.confidence}%)`);
+        console.log(`[Auto] MD5 phiên ${nextPhien}: Gốc: ${result.originalPrediction} → Đảo ngược: ${result.prediction} (${result.confidence}%)`);
       }
     }
     savePredictionHistory();
@@ -737,8 +745,9 @@ function startAutoSaveTask() {
 }
 
 // ==================== ENDPOINTS ====================
-app.get('/', (req, res) => res.send('t.me/Tskhang'));
+app.get('/', (req, res) => res.send('@anhquan - Dự đoán đảo ngược'));
 
+// Endpoint dự đoán - lấy gốc rồi đảo ngược
 app.get('/hu', async (req, res) => {
   try {
     const data = await fetchDataHu();
@@ -771,40 +780,81 @@ app.get('/md5', async (req, res) => {
   }
 });
 
+// Lịch sử
 app.get('/hu/lichsu', async (req, res) => {
   await updateHistoryStatus('hu');
-  res.json({ type: 'Lẩu Cua 79 - Tài Xỉu Hũ', history: predictionHistory.hu, total: predictionHistory.hu.length, id: '@Tskhang' });
+  res.json({ 
+    type: 'Lẩu Cua 79 - Tài Xỉu Hũ (Đảo Ngược)', 
+    history: predictionHistory.hu, 
+    total: predictionHistory.hu.length, 
+    id: '@anhquan',
+    ghi_chu: 'Tất cả dự đoán đều đã được đảo ngược từ dự đoán gốc'
+  });
 });
 
 app.get('/md5/lichsu', async (req, res) => {
   await updateHistoryStatus('md5');
-  res.json({ type: 'Lẩu Cua 79 - Tài Xỉu MD5', history: predictionHistory.md5, total: predictionHistory.md5.length, id: '@Tskhang' });
+  res.json({ 
+    type: 'Lẩu Cua 79 - Tài Xỉu MD5 (Đảo Ngược)', 
+    history: predictionHistory.md5, 
+    total: predictionHistory.md5.length, 
+    id: '@anhquan',
+    ghi_chu: 'Tất cả dự đoán đều đã được đảo ngược từ dự đoán gốc'
+  });
 });
 
+// Endpoint tham số
 app.get('/hu/thamso', async (req, res) => {
   const data = await fetchDataHu();
   if (!data) return res.status(500).json({ error: 'Không thể lấy dữ liệu' });
   const result = calculateAdvancedPrediction(data, 'hu');
-  res.json({ prediction: result.prediction, confidence: result.confidence, factors: result.factors, analysis: result.detailedAnalysis });
+  res.json({ 
+    du_doan: result.prediction,
+    do_tin_cay: result.confidence,
+    factors: result.factors, 
+    analysis: result.detailedAnalysis,
+    da_dao_nguoc: true
+  });
 });
 
 app.get('/md5/Thamso', async (req, res) => {
   const data = await fetchDataMd5();
   if (!data) return res.status(500).json({ error: 'Không thể lấy dữ liệu' });
   const result = calculateAdvancedPrediction(data, 'md5');
-  res.json({ prediction: result.prediction, confidence: result.confidence, factors: result.factors, analysis: result.detailedAnalysis });
+  res.json({ 
+    du_doan: result.prediction,
+    do_tin_cay: result.confidence,
+    factors: result.factors, 
+    analysis: result.detailedAnalysis,
+    da_dao_nguoc: true
+  });
 });
 
+// Endpoint học hỏi
 app.get('/hu/hochoi', (req, res) => {
   const stats = learningData.hu;
   const acc = stats.totalPredictions ? (stats.correctPredictions / stats.totalPredictions * 100).toFixed(2) : 0;
-  res.json({ type: 'HU Learning', totalPredictions: stats.totalPredictions, correctPredictions: stats.correctPredictions, accuracy: acc + '%', streakAnalysis: stats.streakAnalysis, id: '@Tskhang' });
+  res.json({ 
+    type: 'HU Learning (Đảo Ngược)', 
+    totalPredictions: stats.totalPredictions, 
+    correctPredictions: stats.correctPredictions, 
+    accuracy: acc + '%', 
+    streakAnalysis: stats.streakAnalysis, 
+    id: '@anhquan'
+  });
 });
 
 app.get('/md5/Hochoi', (req, res) => {
   const stats = learningData.md5;
   const acc = stats.totalPredictions ? (stats.correctPredictions / stats.totalPredictions * 100).toFixed(2) : 0;
-  res.json({ type: 'MD5 Learning', totalPredictions: stats.totalPredictions, correctPredictions: stats.correctPredictions, accuracy: acc + '%', streakAnalysis: stats.streakAnalysis, id: '@Tskhang' });
+  res.json({ 
+    type: 'MD5 Learning (Đảo Ngược)', 
+    totalPredictions: stats.totalPredictions, 
+    correctPredictions: stats.correctPredictions, 
+    accuracy: acc + '%', 
+    streakAnalysis: stats.streakAnalysis, 
+    id: '@anhquan'
+  });
 });
 
 app.get('/Resetdata', (req, res) => {
@@ -813,7 +863,7 @@ app.get('/Resetdata', (req, res) => {
     md5: { predictions: [], patternStats: {}, totalPredictions: 0, correctPredictions: 0, patternWeights: {}, lastUpdate: null, streakAnalysis: { wins: 0, losses: 0, currentStreak: 0, bestStreak: 0, worstStreak: 0 }, recentAccuracy: [], reversalState: { active: false, streakTrigger: 0 }, markovMatrix: { TT: 0.5, TX: 0.5, XT: 0.5, XX: 0.5 }, markov2Matrix: {}, volatility: 0 }
   };
   saveLearningData();
-  res.json({ message: 'Learning data reset', id: '@Tskhang' });
+  res.json({ message: 'Learning data reset', id: '@anhquan' });
 });
 
 // KHỞI ĐỘNG
@@ -821,7 +871,10 @@ loadHistoricalPatternStats();
 loadLearningData();
 loadPredictionHistory();
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server @Tskhang running on http://0.0.0.0:${PORT}`);
-  console.log('✅ Đã fix lỗi: loadLearningData, khởi tạo md5, thêm toàn bộ hàm phân tích cầu');
+  console.log(`Server @anhquan running on http://0.0.0.0:${PORT}`);
+  console.log('✅ Đã đổi tên từ Tskhang thành anhquan');
+  console.log('✅ Lấy dự đoán gốc, đảo ngược kết quả và hiển thị kết quả đảo ngược');
+  console.log('✅ Endpoints: /hu và /md5 trả về kết quả đã đảo ngược');
+  console.log('✅ Lịch sử hiển thị dự đoán đã đảo ngược');
   startAutoSaveTask();
 });
