@@ -48,6 +48,11 @@ let learningData = {
   }
 };
 
+// === HÀM ĐẢO NGƯỢC DỰ ĐOÁN ===
+function reversePrediction(prediction) {
+    return prediction === 'Tài' ? 'Xỉu' : 'Tài';
+}
+
 // === HÀM LOAD/SAVE ===
 function loadLearningData() {
   try {
@@ -134,9 +139,7 @@ async function fetchDataMd5() {
   }
 }
 
-// ==================== CÁC HÀM PHÂN TÍCH CẦU (COPY TỪ LC.JS GỐC) ====================
-// (Đây là các hàm từ file lc.js bạn đã cung cấp, tôi chỉ giữ lại chữ ký và phần thân cần thiết)
-
+// ==================== CÁC HÀM PHÂN TÍCH CẦU ====================
 function analyzeCauBet(results, type) {
   if (results.length < 3) return { detected: false };
   let streakType = results[0];
@@ -519,7 +522,7 @@ function loadHistoricalPatternStats() {
   } catch (e) { console.error('Error loading historical data:', e.message); }
 }
 
-// === HÀM DỰ ĐOÁN CHÍNH ===
+// === HÀM DỰ ĐOÁN CHÍNH (ĐÃ ĐẢO NGƯỢC) ===
 function calculateAdvancedPrediction(data, type) {
   const results = data.map(d => d.Ket_qua);
   const sums = data.map(d => d.Tong);
@@ -593,23 +596,31 @@ function calculateAdvancedPrediction(data, type) {
   // Reversal mode
   const streak = learningData[type].streakAnalysis.currentStreak;
   let finalPrediction = taiScore >= xiuScore ? 'Tài' : 'Xỉu';
+  
+  // ĐẢO NGƯỢC DỰ ĐOÁN - ĐÂY LÀ THAY ĐỔI CHÍNH
+  finalPrediction = reversePrediction(finalPrediction);
+  
+  // Điều chỉnh reversal mode sau khi đảo ngược
   if (streak <= -3 && !learningData[type].reversalState.active) {
-    finalPrediction = finalPrediction === 'Tài' ? 'Xỉu' : 'Tài';
+    // Đã đảo ngược rồi nên không cần đảo thêm
     learningData[type].reversalState = { active: true, streakTrigger: streak };
-    factors.push('🔄 REVERSAL MODE ACTIVE');
+    factors.push('🔄 REVERSAL MODE ACTIVE (Already Reversed)');
   } else if (streak > 0 && learningData[type].reversalState.active) {
     learningData[type].reversalState.active = false;
   }
 
-  // Confidence cuối
-  let baseConf = 65;
+  // Confidence cuối - Giảm confidence để thể hiện dự đoán ngược
+  let baseConf = 45; // Giảm từ 65 xuống 45 cho dự đoán ngược
   const topPatterns = predictions.sort((a, b) => b.priority - a.priority).slice(0, 3);
   for (const p of topPatterns) {
     if (p.prediction === finalPrediction) baseConf += (p.confidence - 65) * 0.25;
   }
   const agreement = (finalPrediction === 'Tài' ? predictions.filter(p => p.prediction === 'Tài').length : predictions.filter(p => p.prediction === 'Xỉu').length) / predictions.length;
-  baseConf += agreement * 12 + volatilityBoost;
-  let finalConf = Math.min(94, Math.max(55, Math.round(baseConf)));
+  baseConf += agreement * 8 + volatilityBoost; // Giảm hệ số từ 12 xuống 8
+  let finalConf = Math.min(85, Math.max(40, Math.round(baseConf))); // Giới hạn thấp hơn
+
+  // Thêm factor cho biết đã đảo ngược
+  factors.push(`🔄 REVERSED: Original was ${taiScore >= xiuScore ? 'Tài' : 'Xỉu'}`);
 
   return {
     prediction: finalPrediction,
@@ -621,6 +632,8 @@ function calculateAdvancedPrediction(data, type) {
       taiVotes: predictions.filter(p => p.prediction === 'Tài').length,
       xiuVotes: predictions.filter(p => p.prediction === 'Xỉu').length,
       topPattern: topPatterns[0]?.name || 'N/A',
+      originalPrediction: taiScore >= xiuScore ? 'Tài' : 'Xỉu',
+      reversedTo: finalPrediction,
       learningStats: {
         accuracy: learningData[type].totalPredictions ? (learningData[type].correctPredictions / learningData[type].totalPredictions * 100).toFixed(1) + '%' : 'N/A',
         currentStreak: streak
@@ -709,7 +722,7 @@ async function autoProcessPredictions() {
         savePredictionToHistory('hu', nextPhien, result.prediction, result.confidence, dataHu[0]);
         recordPrediction('hu', nextPhien, result.prediction, result.confidence, result.factors);
         lastProcessedPhien.hu = nextPhien;
-        console.log(`[Auto] Hu phiên ${nextPhien}: ${result.prediction} (${result.confidence}%)`);
+        console.log(`[Auto] Hu phiên ${nextPhien}: ${result.prediction} (${result.confidence}%) - REVERSED`);
       }
     }
     const dataMd5 = await fetchDataMd5();
@@ -721,7 +734,7 @@ async function autoProcessPredictions() {
         savePredictionToHistory('md5', nextPhien, result.prediction, result.confidence, dataMd5[0]);
         recordPrediction('md5', nextPhien, result.prediction, result.confidence, result.factors);
         lastProcessedPhien.md5 = nextPhien;
-        console.log(`[Auto] MD5 phiên ${nextPhien}: ${result.prediction} (${result.confidence}%)`);
+        console.log(`[Auto] MD5 phiên ${nextPhien}: ${result.prediction} (${result.confidence}%) - REVERSED`);
       }
     }
     savePredictionHistory();
@@ -773,12 +786,12 @@ app.get('/md5', async (req, res) => {
 
 app.get('/hu/lichsu', async (req, res) => {
   await updateHistoryStatus('hu');
-  res.json({ type: 'Lẩu Cua 79 - Tài Xỉu Hũ', history: predictionHistory.hu, total: predictionHistory.hu.length, id: '@Tskhang' });
+  res.json({ type: 'Lẩu Cua 79 - Tài Xỉu Hũ (REVERSED)', history: predictionHistory.hu, total: predictionHistory.hu.length, id: '@Tskhang' });
 });
 
 app.get('/md5/lichsu', async (req, res) => {
   await updateHistoryStatus('md5');
-  res.json({ type: 'Lẩu Cua 79 - Tài Xỉu MD5', history: predictionHistory.md5, total: predictionHistory.md5.length, id: '@Tskhang' });
+  res.json({ type: 'Lẩu Cua 79 - Tài Xỉu MD5 (REVERSED)', history: predictionHistory.md5, total: predictionHistory.md5.length, id: '@Tskhang' });
 });
 
 app.get('/hu/thamso', async (req, res) => {
@@ -798,13 +811,13 @@ app.get('/md5/Thamso', async (req, res) => {
 app.get('/hu/hochoi', (req, res) => {
   const stats = learningData.hu;
   const acc = stats.totalPredictions ? (stats.correctPredictions / stats.totalPredictions * 100).toFixed(2) : 0;
-  res.json({ type: 'HU Learning', totalPredictions: stats.totalPredictions, correctPredictions: stats.correctPredictions, accuracy: acc + '%', streakAnalysis: stats.streakAnalysis, id: '@Tskhang' });
+  res.json({ type: 'HU Learning (REVERSED)', totalPredictions: stats.totalPredictions, correctPredictions: stats.correctPredictions, accuracy: acc + '%', streakAnalysis: stats.streakAnalysis, id: '@Tskhang' });
 });
 
 app.get('/md5/Hochoi', (req, res) => {
   const stats = learningData.md5;
   const acc = stats.totalPredictions ? (stats.correctPredictions / stats.totalPredictions * 100).toFixed(2) : 0;
-  res.json({ type: 'MD5 Learning', totalPredictions: stats.totalPredictions, correctPredictions: stats.correctPredictions, accuracy: acc + '%', streakAnalysis: stats.streakAnalysis, id: '@Tskhang' });
+  res.json({ type: 'MD5 Learning (REVERSED)', totalPredictions: stats.totalPredictions, correctPredictions: stats.correctPredictions, accuracy: acc + '%', streakAnalysis: stats.streakAnalysis, id: '@Tskhang' });
 });
 
 app.get('/Resetdata', (req, res) => {
@@ -822,6 +835,7 @@ loadLearningData();
 loadPredictionHistory();
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server @Tskhang running on http://0.0.0.0:${PORT}`);
-  console.log('✅ Đã fix lỗi: loadLearningData, khởi tạo md5, thêm toàn bộ hàm phân tích cầu');
+  console.log('✅ REVERSED MODE: Tất cả dự đoán đã được đảo ngược hoàn toàn');
+  console.log('✅ Fix lỗi: loadLearningData, khởi tạo md5, thêm toàn bộ hàm phân tích cầu');
   startAutoSaveTask();
 });
