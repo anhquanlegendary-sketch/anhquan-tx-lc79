@@ -1,0 +1,17 @@
+{
+  "name": "tskhang-tai-xiu",
+  "version": "1.0.0",
+  "description": "Bắt cầu Tài Xỉu siêu chuẩn",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0"
+  }
+}
